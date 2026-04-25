@@ -1,0 +1,23 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Skyview — read-only Solana chat API"
+readme = "README.md"
+authors = [
+    { name = "timadigwe", email = "timothyadigwe2019@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.42.95",
+    "fastapi>=0.136.0",
+    "httpx>=0.28.1",
+    "mcp>=1.27.0",
+    "openai>=2.32.0",
+    "pydantic-settings>=2.14.0",
+    "python-dotenv>=1.2.2",
+    "uvicorn[standard]>=0.46.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"

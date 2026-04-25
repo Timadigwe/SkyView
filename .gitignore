@@ -1,0 +1,43 @@
+# Local chat transcripts (when USE_S3 is false)
+data/
+backend/data/
+.env
+.env.*
+!.env.example
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+
+
+# Node
+node_modules/
+out/
+.next/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# AWS
+.aws/
+
+# Lambda packages
+lambda-deployment.zip
+lambda-package/
+
+github-trust.json
+tf-backend-access.json

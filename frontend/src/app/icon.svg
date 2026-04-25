@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Skyview">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e1b4b"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#g)"/>
+  <!-- horizon / chain line -->
+  <path d="M5 22h22" stroke="#334155" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- "view"  eye + lens (read-only observation) -->
+  <ellipse cx="16" cy="15" rx="9" ry="5.5" fill="none" stroke="#2dd4bf" stroke-width="1.75" stroke-linecap="round"/>
+  <circle cx="16" cy="15" r="2.5" fill="#38bdf8"/>
+  <!-- sky hint -->
+  <path d="M7 10c2.5-2 5.5-2.5 9-1.5" fill="none" stroke="#6366f1" stroke-width="1" stroke-linecap="round" opacity="0.85"/>
+</svg>
