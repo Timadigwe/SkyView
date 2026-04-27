@@ -189,3 +189,10 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
   role   = aws_iam_role.github_actions.id
   policy = data.aws_iam_policy_document.github_actions_merged.json
 }
+
+# Managed policy: full IAM read (Get*, List*) so `terraform plan` refresh never 403s on
+# GetPolicyVersion, ListRolePolicies, etc. The inline policy above can drift; this does not.
+resource "aws_iam_role_policy_attachment" "github_iam_readonly" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/IAMReadOnlyAccess"
+}
