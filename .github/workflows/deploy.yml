@@ -1,6 +1,7 @@
 # Full SkyView deploy: Terraform (ECR, S3, App Runner) → Docker push → start-deployment → Next build → S3 website sync.
 # Requires repository secrets: AWS_ROLE_ARN, OPENROUTER_API_KEY
-# Optional: TF_STATE_BUCKET, TF_STATE_REGION, TF_LOCK_TABLE (when using S3 + DynamoDB backend; configure backend in terraform or via partial backend files — see script deploy.sh)
+# TF_STATE_BUCKET: optional in GitHub Actions — deploy.sh defaults to skyview-terraform-state-<account_id> via sts.
+#   Set the secret if your state bucket uses a different name. TF_STATE_REGION if the bucket is not in us-west-2.
 name: deploy
 
 on:
@@ -21,7 +22,7 @@ jobs:
       contents: read
     env:
       AWS_REGION: us-west-2
-      # Match terraform defaults / deploy.sh; override with org secrets if you use a different state bucket/region
+      # Optional: override S3 state bucket/region (defaults in deploy.sh for GHA)
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
       TF_STATE_REGION: ${{ secrets.TF_STATE_REGION }}
       # Required for App Runner at apply time; never commit the key in terraform.tfvars

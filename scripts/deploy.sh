@@ -23,6 +23,15 @@ if [[ -n "${OPENROUTER_API_KEY:-}" && -z "${TF_VAR_openrouter_api_key:-}" ]]; th
   export TF_VAR_openrouter_api_key="$OPENROUTER_API_KEY"
 fi
 
+# versions.tf uses backend "s3" {} — init must get bucket/key (or it errors). If the GitHub secret
+# TF_STATE_BUCKET is not set, default to the same naming convention as SkyView: skyview-terraform-state-ACCOUNT_ID
+if [[ -z "${TF_STATE_BUCKET:-}" && -n "${GITHUB_ACTIONS:-}" ]]; then
+  _acct=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || true)
+  if [[ -n "${_acct:-}" && "${_acct}" != "None" ]]; then
+    export TF_STATE_BUCKET="skyview-terraform-state-${_acct}"
+  fi
+fi
+
 cd "$ROOT/terraform"
 INIT_CMD=(terraform init -input=false)
 if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
@@ -32,6 +41,12 @@ if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
     -backend-config="region=${TF_STATE_REGION:-${AWS_REGION}}"
     -backend-config="encrypt=true"
   )
+elif [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+  echo "error: TF_STATE_BUCKET is empty in GitHub Actions and aws sts get-caller-identity did not return an account id" >&2
+  exit 1
+else
+  # Local: no S3 state — use local state file (ignore the configured S3 backend for this run)
+  INIT_CMD+=(-backend=false)
 fi
 "${INIT_CMD[@]}"
 

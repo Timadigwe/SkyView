@@ -13,6 +13,14 @@ ENVIRONMENT="${1:-dev}"
 export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-west-2}}"
 REGION="$AWS_REGION"
 
+# Same as deploy.sh: S3 backend needs bucket+key; default in GitHub Actions if secret not set
+if [[ -z "${TF_STATE_BUCKET:-}" && -n "${GITHUB_ACTIONS:-}" ]]; then
+  _acct=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || true)
+  if [[ -n "${_acct:-}" && "${_acct}" != "None" ]]; then
+    export TF_STATE_BUCKET="skyview-terraform-state-${_acct}"
+  fi
+fi
+
 cd "$ROOT/terraform"
 INIT_CMD=(terraform init -input=false)
 if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
@@ -22,6 +30,11 @@ if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
     -backend-config="region=${TF_STATE_REGION:-${AWS_REGION}}"
     -backend-config="encrypt=true"
   )
+elif [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+  echo "error: TF_STATE_BUCKET is empty in GitHub Actions" >&2
+  exit 1
+else
+  INIT_CMD+=(-backend=false)
 fi
 "${INIT_CMD[@]}"
 
