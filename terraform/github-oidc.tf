@@ -1,5 +1,14 @@
 # One GitHub OIDC provider per AWS account. IAM role for GitHub Actions: terraform apply + ECR + App Runner + S3.
 # Set github_repository in tfvars, then: terraform apply (or -target=aws_iam_openid_connect_provider.github first).
+#
+# BOOTSTRAP: The GitHub OIDC role must NOT be the only identity that updates
+# `aws_iam_role_policy.github_actions_deploy` the first time you add new IAM
+# actions (e.g. iam:PutRolePolicy). Until the live inline policy in AWS includes
+# those actions, `terraform apply` in CI will get AccessDenied on PutRolePolicy
+# to this role. Fix: run once on your machine with an IAM *admin* user (not
+# the github-actions-skyview role), e.g.:
+#   terraform apply -target=aws_iam_role_policy.github_actions_deploy
+# Or edit the inline policy in the AWS console, then re-run the workflow.
 locals {
   tf_state_bucket = coalesce(
     var.terraform_state_bucket_name != "" ? var.terraform_state_bucket_name : null,

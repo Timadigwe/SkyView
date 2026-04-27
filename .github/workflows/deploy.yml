@@ -1,4 +1,7 @@
 # Full SkyView deploy: Terraform (ECR, S3, App Runner) → Docker push → start-deployment → Next build → S3 website sync.
+# If TF fails with iam:PutRolePolicy on github-actions-skyview, apply
+#   terraform apply -target=aws_iam_role_policy.github_actions_deploy
+# once locally with an *admin* AWS user (the OIDC role cannot update its own policy until it has that right).
 # Requires repository secrets: AWS_ROLE_ARN, OPENROUTER_API_KEY
 # TF_STATE_BUCKET: optional in GitHub Actions — deploy.sh defaults to skyview-terraform-state-<account_id> via sts.
 #   Set the secret if your state bucket uses a different name. TF_STATE_REGION if the bucket is not in us-west-2.
