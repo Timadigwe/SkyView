@@ -23,12 +23,21 @@ from pydantic import BaseModel, Field
 
 from .chat_service import run_chat_with_mcp
 from .memory_store import append_turn, load_messages, save_messages, to_llm_history
+from .guardrails import (
+    heuristic_block_output,
+    run_input_guardrail,
+    run_output_guardrail,
+)
+from .llm import openrouter_client
+from .paths import default_mcp_minimal_entry
+from .settings import Settings, get_settings, refresh_settings
+from .state import AppState, get_state, set_state
 
 
 def _prior_turns_for_guard(
     history: list[dict[str, str]], *, max_len: int = 12_000
 ) -> str:
-    """Text from prior turns for output guard (address/sig reuse, tone)."""
+    """Text from prior turns for input/output guards (memory, tone)."""
     if not history:
         return ""
     parts: list[str] = []
@@ -44,15 +53,6 @@ def _prior_turns_for_guard(
         parts.append(line)
         n += len(line) + 1
     return "\n".join(parts)
-from .guardrails import (
-    heuristic_block_output,
-    run_input_guardrail,
-    run_output_guardrail,
-)
-from .llm import openrouter_client
-from .paths import default_mcp_minimal_entry
-from .settings import Settings, get_settings, refresh_settings
-from .state import AppState, get_state, set_state
 
 log = logging.getLogger(__name__)
 
@@ -282,7 +282,12 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseBody:
     guard_model = (settings.guardrail_model or "").strip() or settings.openrouter_model
     client = openrouter_client(settings)
 
-    inp = await run_input_guardrail(client, guard_model, body.message)
+    inp = await run_input_guardrail(
+        client,
+        guard_model,
+        body.message,
+        prior_session_text=_prior_turns_for_guard(llm_history),
+    )
     if not inp.allowed:
         return ChatResponseBody(
             ok=True,

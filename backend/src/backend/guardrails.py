@@ -17,6 +17,13 @@ The backend can only answer using tools: native SOL balance (when a pubkey is gi
 SPL token balance for a given mint, SPL token account count, recent transaction signatures
 for an address, transaction details by signature, account info, and basic network (slot/epoch).
 There is no server default wallet; the user must supply addresses when needed for *new* lookups.
+
+You may receive "Earlier in this session" text. If the user only asks to recall their *own* name,
+wallet address, or words they *already typed* in those prior turns (e.g. "what's my name?",
+"what address did I give?"), that is ALWAYS allowed=true — they are not asking you to spy on
+strangers; they are asking about this same conversation. Only set allowed=false for true
+out-of-scope or harmful requests.
+
 If the user asks about something they said earlier in this same chat (e.g. which address they
 pasted before), that is allowed—classify as general_solana and allowed=true.
 
@@ -63,6 +70,21 @@ _PRIVATE_KEYish = re.compile(
     r"\b[1-9A-HJ-NP-Za-km-z]{80,}\b"
 )
 
+# Short follow-ups that only make sense with prior chat; allow when prior_session_text exists.
+_RECALL_SELF = re.compile(
+    r"(?i)("
+    r"what\s*('?s|is)\s+my\s+name|"
+    r"whats\s+my\s+name|"
+    r"who\s+am\s+i|"
+    r"what\s*('?s|is)\s+my\s+(wallet\s+)?address|"
+    r"what\s+(address|wallet)\s+did\s+i|"
+    r"what\s+did\s+i\s+(say|paste|give|tell)|"
+    r"remind\s+me(\s+what)?|"
+    r"my\s+name\s+and|"
+    r"name\s+and\s+wallet"
+    r")"
+)
+
 
 class InputGuardResult(BaseModel):
     allowed: bool
@@ -94,7 +116,11 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
 
 
 async def run_input_guardrail(
-    client: AsyncOpenAI, model: str, user_message: str
+    client: AsyncOpenAI,
+    model: str,
+    user_message: str,
+    *,
+    prior_session_text: str = "",
 ) -> InputGuardResult:
     if not (user_message or "").strip():
         return InputGuardResult(
@@ -109,6 +135,23 @@ async def run_input_guardrail(
             category="out_of_scope",
         )
 
+    prior = (prior_session_text or "").strip()
+    # Same-session “what’s my name / my address” only works with prior turns; allow without the
+    # classifier mis-firing on the bare question.
+    if prior and len(prior) > 20 and _RECALL_SELF.match(user_message):
+        return InputGuardResult(
+            allowed=True,
+            reason="Happy to use this chat to answer that.",
+            category="general_solana",
+        )
+
+    user_block = user_message
+    if prior:
+        user_block = (
+            f"Current message:\n{user_message}\n\n"
+            f"Earlier in this same session (for follow-up questions):\n{prior[:6000]}"
+        )
+
     res = await client.chat.completions.create(
         model=model,
         temperature=0.25,
@@ -116,7 +159,7 @@ async def run_input_guardrail(
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": INPUT_SYSTEM},
-            {"role": "user", "content": user_message},
+            {"role": "user", "content": user_block},
         ],
     )
     raw = (res.choices[0].message.content or "").strip()

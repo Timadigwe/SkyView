@@ -101,6 +101,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     resources = ["*"]
   }
 
+  # Terraform refresh/plan needs read APIs on existing roles/policies, not only create/delete.
   statement {
     sid    = "SkyviewIAM"
     effect = "Allow"
@@ -115,7 +116,14 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "iam:CreatePolicy",
       "iam:DeletePolicy",
       "iam:GetPolicy",
+      "iam:GetPolicyVersion",
       "iam:ListPolicyVersions",
+      "iam:ListRolePolicies",
+      "iam:GetRolePolicy",
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListInstanceProfilesForRole",
       "iam:TagRole",
       "iam:UntagRole",
       "iam:TagPolicy",
