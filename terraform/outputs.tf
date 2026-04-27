@@ -37,6 +37,11 @@ output "app_runner_service_arn" {
   description = "Empty until create_app_runner=true and applied"
 }
 
+output "github_actions_role_arn" {
+  description = "Set GitHub secret AWS_ROLE_ARN to this value for OIDC deploys"
+  value       = aws_iam_role.github_actions.arn
+}
+
 output "setup_instructions" {
   description = "Two-phase order (alex/4_researcher): apply -> push :latest -> apply with create_app_runner=true"
   value       = <<-EOT

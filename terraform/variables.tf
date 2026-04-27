@@ -62,3 +62,31 @@ variable "create_app_runner" {
   default     = false
   description = "Phase 2 switch: set true after pushing an ECR :latest image"
 }
+
+variable "github_repository" {
+  description = "GitHub repo for OIDC (owner/repo). Used by github-oidc.tf; must match the repo that runs the workflow."
+  type        = string
+  default     = "Timadigwe/SkyView"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must look like owner/repo (letters, numbers, -, ., _)."
+  }
+}
+
+variable "github_actions_role_name" {
+  description = "IAM role name for GitHub Actions; set repository secret AWS_ROLE_ARN to this role's ARN"
+  type        = string
+  default     = "github-actions-skyview"
+}
+
+variable "terraform_state_bucket_name" {
+  description = "S3 bucket for remote state. Empty uses {project_name}-terraform-state-{account_id} in IAM policy."
+  type        = string
+  default     = ""
+}
+
+variable "terraform_lock_table_name" {
+  description = "DynamoDB table for state locking. Empty omits lock permissions from the GitHub deploy policy."
+  type        = string
+  default     = ""
+}
