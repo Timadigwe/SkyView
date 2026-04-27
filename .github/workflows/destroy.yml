@@ -1,0 +1,68 @@
+# Tears down SkyView AWS resources (S3 empty → terraform destroy). Manual only.
+# Requires: AWS_ROLE_ARN
+# Optional: same remote state as deploy — TF_STATE_BUCKET, TF_STATE_REGION
+name: destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type the word `destroy` (lowercase) to run"
+        required: true
+        default: ""
+        type: string
+
+jobs:
+  confirm-gate:
+    name: Confirm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require typing destroy
+        if: inputs.confirm != 'destroy'
+        run: |
+          echo "Refusing: set confirm to exactly: destroy" >&2
+          exit 1
+      - name: OK
+        if: inputs.confirm == 'destroy'
+        run: echo "Confirmed. Proceeding to destroy."
+
+  destroy:
+    if: inputs.confirm == 'destroy'
+    needs: confirm-gate
+    name: Terraform destroy
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-west-2
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      TF_STATE_REGION: ${{ secrets.TF_STATE_REGION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          if [ -z "${{ secrets.AWS_ROLE_ARN }}" ]; then
+            echo "Missing secret: AWS_ROLE_ARN" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: skyview-destroy-${{ github.run_id }}
+          aws-region: us-west-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+
+      - name: Run destroy script
+        run: |
+          chmod +x scripts/destroy.sh
+          ./scripts/destroy.sh dev

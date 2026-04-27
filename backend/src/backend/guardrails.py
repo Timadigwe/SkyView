@@ -16,7 +16,9 @@ INPUT_SYSTEM = """You classify user messages for a read-only Solana helper.
 The backend can only answer using tools: native SOL balance (when a pubkey is given),
 SPL token balance for a given mint, SPL token account count, recent transaction signatures
 for an address, transaction details by signature, account info, and basic network (slot/epoch).
-There is no server-stored wallet; the user must supply addresses when needed.
+There is no server default wallet; the user must supply addresses when needed for *new* lookups.
+If the user asks about something they said earlier in this same chat (e.g. which address they
+pasted before), that is allowed—classify as general_solana and allowed=true.
 
 Reply with a JSON object ONLY, no markdown:
 {
@@ -33,9 +35,10 @@ Set allowed=true if the user wants Solana on-chain information that our tools co
 (including \"explain\", \"how much\", \"last txs\", \"what is this address\", devnet/mainnet context).
 
 Set allowed=false for: other blockchains, sending/swapping/trading, writing smart contracts,
-generating keys/seeds, illegal activity, personal data extraction, or anything not answerable
-with read-only chain data — still refuse in a friendly, respectful way and suggest a Solana
-angle when possible."""
+generating keys/seeds, illegal activity, extracting *others’* private data, or anything not
+answerable with read-only chain data — still refuse in a friendly, respectful way and suggest a
+Solana angle when possible. Do **not** block “what did I say / what address did I give earlier”
+in this session; that is not personal-data extraction."""
 
 OUTPUT_SYSTEM = """You validate and polish assistant messages for a read-only Solana chat.
 
@@ -139,6 +142,8 @@ async def run_output_guardrail(
     user_message: str,
     draft: str,
     tool_trace: str,
+    *,
+    prior_turns_text: str = "",
 ) -> OutputGuardResult:
     text = draft or ""
     if "BEGIN" in text and "PRIVATE" in text:
@@ -150,7 +155,8 @@ async def run_output_guardrail(
     # Block only if the draft *introduces* a long base58 that wasn’t in the user message
     # or in tool output (e.g. tx sig returned by getTransaction). Stops 88-char sigs from
     # tripping the “sensitive” template when the user asked for those details.
-    _combined = f"{user_message}\n{tool_trace}"
+    # Include prior chat so we do not treat reused addresses/sigs from history as “new” sensitive text.
+    _combined = f"{user_message}\n{prior_turns_text}\n{tool_trace}"
     for m in _PRIVATE_KEYish.finditer(text):
         if m.group(0) not in _combined:
             return OutputGuardResult(
@@ -167,7 +173,12 @@ async def run_output_guardrail(
             {"role": "system", "content": OUTPUT_SYSTEM},
             {
                 "role": "user",
-                "content": f"User asked:\n{user_message}\n\nTool data summary (for grounding):\n{tool_trace[:12000]}\n\nDraft reply:\n{text[:12000]}",
+                "content": (
+                    f"User asked:\n{user_message}\n\n"
+                    f"Prior turns in this session (may be empty):\n{prior_turns_text[:8000]}\n\n"
+                    f"Tool data summary (for grounding):\n{tool_trace[:12000]}\n\n"
+                    f"Draft reply:\n{text[:12000]}"
+                ),
             },
         ],
     )

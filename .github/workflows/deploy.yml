@@ -1,0 +1,69 @@
+# Full SkyView deploy: Terraform (ECR, S3, App Runner) → Docker push → start-deployment → Next build → S3 website sync.
+# Requires repository secrets: AWS_ROLE_ARN, OPENROUTER_API_KEY
+# Optional: TF_STATE_BUCKET, TF_STATE_REGION, TF_LOCK_TABLE (when using S3 + DynamoDB backend; configure backend in terraform or via partial backend files — see script deploy.sh)
+name: deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: skyview-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-west-2
+      # Match terraform defaults / deploy.sh; override with org secrets if you use a different state bucket/region
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      TF_STATE_REGION: ${{ secrets.TF_STATE_REGION }}
+      # Required for App Runner at apply time; never commit the key in terraform.tfvars
+      TF_VAR_openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+      TF_VAR_create_app_runner: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        env:
+          _AWS_ROLE: ${{ secrets.AWS_ROLE_ARN }}
+          _OR_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$_AWS_ROLE" ]; then echo "Add repository secret: AWS_ROLE_ARN" >&2; exit 1; fi
+          if [ -z "$_OR_KEY" ]; then echo "Add repository secret: OPENROUTER_API_KEY" >&2; exit 1; fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: skyview-deploy-${{ github.run_id }}
+          aws-region: us-west-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+          terraform_wrapper: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run deploy script
+        run: |
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh dev
+        # deploy.sh is invoked from repository root (SkyView)

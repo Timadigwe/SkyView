@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 # Order matches ai_financial_advisor/guides/4_researcher.md: if App Runner is not in state,
 # first apply _without_ it (ECR+S3+IAM via -target), push :latest, then full apply. Otherwise
 # one full apply, then image + frontend.
@@ -42,7 +44,8 @@ if [[ "${SKIP_TERRAFORM:-0}" != "1" ]]; then
   if apprunner_in_state; then
     terraform apply -auto-approve \
       -var="environment=$ENV" \
-      -var="aws_region=$AWS_REGION"
+      -var="aws_region=$AWS_REGION" \
+      -var="create_app_runner=true"
   else
     # Everything in main.tf except App Runner; then push, then second apply creates the service
     terraform apply -auto-approve \
@@ -88,7 +91,8 @@ if [[ "${SKIP_TERRAFORM:-0}" != "1" && "$RUN_FULL_APPLY_AFTER_IMAGE" == true ]];
   cd "$ROOT/terraform"
   terraform apply -auto-approve \
     -var="environment=$ENV" \
-    -var="aws_region=$AWS_REGION"
+    -var="aws_region=$AWS_REGION" \
+    -var="create_app_runner=true"
   cd "$ROOT"
 fi
 

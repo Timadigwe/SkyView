@@ -23,6 +23,27 @@ from pydantic import BaseModel, Field
 
 from .chat_service import run_chat_with_mcp
 from .memory_store import append_turn, load_messages, save_messages, to_llm_history
+
+
+def _prior_turns_for_guard(
+    history: list[dict[str, str]], *, max_len: int = 12_000
+) -> str:
+    """Text from prior turns for output guard (address/sig reuse, tone)."""
+    if not history:
+        return ""
+    parts: list[str] = []
+    n = 0
+    for m in history:
+        r = m.get("role", "")
+        c = (m.get("content", "") or "").strip()
+        if not c:
+            continue
+        line = f"{r}: {c}"
+        if n + len(line) + 1 > max_len:
+            break
+        parts.append(line)
+        n += len(line) + 1
+    return "\n".join(parts)
 from .guardrails import (
     heuristic_block_output,
     run_input_guardrail,
@@ -298,7 +319,12 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseBody:
         )
 
     out = await run_output_guardrail(
-        client, guard_model, body.message, draft, tool_trace
+        client,
+        guard_model,
+        body.message,
+        draft,
+        tool_trace,
+        prior_turns_text=_prior_turns_for_guard(llm_history),
     )
     final = out.final_text
     if not out.ok:

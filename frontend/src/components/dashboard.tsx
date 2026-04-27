@@ -26,6 +26,8 @@ export function Dashboard() {
   const [connected, setConnected] = useState(false);
   const [mcpLine, setMcpLine] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  /** Same as state but updated synchronously when the stream sends meta (avoids new session on fast follow-up). */
+  const sessionIdRef = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const api = getApiBase();
 
@@ -33,6 +35,7 @@ export function Dashboard() {
     try {
       const s = localStorage.getItem(SKYVIEW_SESSION_KEY);
       if (!s) return;
+      sessionIdRef.current = s;
       setSessionId(s);
       void fetchChatHistory(s)
         .then((msgs) => {
@@ -80,18 +83,28 @@ export function Dashboard() {
     setInput("");
     setErr(null);
     setLoading(true);
-    setMessages((m) => [...m, { role: "user", content: t }]);
+    // Prior turns only; current line is `t` in the request body. Compute before we append the user bubble.
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    let sid: string | null = sessionIdRef.current ?? sessionId;
+    if (typeof window !== "undefined" && !sid) {
+      try {
+        sid = localStorage.getItem(SKYVIEW_SESSION_KEY);
+      } catch {
+        /* private mode */
+      }
+    }
+    setMessages((m) => [...m, { role: "user", content: t }]);
     try {
       // Add an assistant placeholder and stream into it.
       let assistantText = "";
       const assistantIndex = messages.length + 1; // user was appended optimistically
       setMessages((m) => [...m, { role: "assistant", content: "" }]);
 
-      await postChatStream(t, history, sessionId, (evt) => {
+      await postChatStream(t, history, sid, (evt) => {
         if (evt.type === "meta") {
-          setSessionId(evt.session_id);
           if (evt.session_id) {
+            sessionIdRef.current = evt.session_id;
+            setSessionId(evt.session_id);
             try {
               localStorage.setItem(SKYVIEW_SESSION_KEY, evt.session_id);
             } catch {

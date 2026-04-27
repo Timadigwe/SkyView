@@ -2,7 +2,6 @@
 name = "backend"
 version = "0.1.0"
 description = "Skyview — read-only Solana chat API"
-readme = "README.md"
 authors = [
     { name = "timadigwe", email = "timothyadigwe2019@gmail.com" }
 ]
