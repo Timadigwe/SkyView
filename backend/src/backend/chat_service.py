@@ -81,7 +81,8 @@ async def run_chat_with_mcp(
     max_rounds = max(1, min(settings.chat_max_tool_rounds, 20))
     trace_parts: list[str] = []
 
-    for _round in range(max_rounds):
+    for round_idx in range(max_rounds):
+        log.debug("chat agent round %s/%s", round_idx + 1, max_rounds)
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -94,7 +95,11 @@ async def run_chat_with_mcp(
         msg = choice.message
         tcalls = list(msg.tool_calls) if msg.tool_calls else []
         if not tcalls:
+            log.info("chat agent: model finished without tool calls (round %s)", round_idx + 1)
             return (msg.content or "(no content)", "\n".join(trace_parts)[:20000])
+
+        names = [tc.function.name for tc in tcalls]
+        log.info("chat agent: tool round %s calling %s", round_idx + 1, names)
 
         assistant_msg: dict[str, Any] = {
             "role": "assistant",
@@ -134,6 +139,7 @@ async def run_chat_with_mcp(
                 }
             )
 
+    log.warning("chat agent: hit max tool rounds (%s)", max_rounds)
     return (
         "Stopped: too many tool rounds. Try a narrower question.",
         "\n".join(trace_parts)[:20000],

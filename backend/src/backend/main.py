@@ -6,21 +6,28 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from sse_starlette.sse import EventSourceResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp
 
 from pydantic import BaseModel, Field
 
+from .logging_config import configure_logging
 from .chat_service import run_chat_with_mcp
 from .memory_store import append_turn, load_messages, save_messages, to_llm_history
 from .guardrails import (
@@ -33,6 +40,7 @@ from .paths import default_mcp_minimal_entry
 from .settings import Settings, get_settings, refresh_settings
 from .state import AppState, get_state, set_state
 
+configure_logging()
 
 def _prior_turns_for_guard(
     history: list[dict[str, str]], *, max_len: int = 12_000
@@ -55,6 +63,31 @@ def _prior_turns_for_guard(
     return "\n".join(parts)
 
 log = logging.getLogger(__name__)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Logs each HTTP request with status and duration (path only; no query/body)."""
+
+    def __init__(self, app: ASGIApp, *, skip_paths: frozenset[str] | None = None) -> None:
+        super().__init__(app)
+        self._skip = skip_paths or frozenset({"/api/health"})
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        path = request.url.path
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            log.exception("request failed %s %s", request.method, path)
+            raise
+        ms = (time.perf_counter() - start) * 1000
+        line = "%s %s -> %s %.1fms"
+        args = (request.method, path, response.status_code, ms)
+        if path in self._skip:
+            log.debug(line, *args)
+        else:
+            log.info(line, *args)
+        return response
 
 
 class ChatRequest(BaseModel):
@@ -104,6 +137,7 @@ async def mcp_lifecycle(app: FastAPI) -> None:
         await st.push_thought("Connecting to solana-mcp-minimal (local Node build)…")
     except Exception:  # noqa: BLE001
         pass
+    log.info("Starting MCP stdio: node %s", entry)
     try:
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -111,6 +145,8 @@ async def mcp_lifecycle(app: FastAPI) -> None:
                 tools = (await session.list_tools()).tools
                 st = get_state()
                 st.mcp_tool_names = [t.name for t in tools]
+                preview = ", ".join(st.mcp_tool_names[:12])
+                log.info("MCP ready: %d tools%s", len(tools), f" ({preview})" if preview else "")
                 app.state.mcp = session
                 app.state.mcp_tools = list(tools)
                 try:
@@ -176,6 +212,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/api/health")
@@ -246,6 +283,7 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseBody:
     if persist:
         session_id = session_id or str(uuid.uuid4())
     if not (settings.openrouter_api_key or "").strip():
+        log.warning("chat: rejected — OPENROUTER_API_KEY not set")
         return ChatResponseBody(
             ok=False,
             stage="config",
@@ -256,6 +294,7 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseBody:
     mcp: ClientSession | None = getattr(request.app.state, "mcp", None)
     mcp_tools: list[Any] = list(getattr(request.app.state, "mcp_tools", []) or [])
     if mcp is None or not mcp_tools:
+        log.warning("chat: MCP session not ready")
         return ChatResponseBody(
             ok=False,
             stage="mcp",
@@ -289,6 +328,7 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseBody:
         prior_session_text=_prior_turns_for_guard(llm_history),
     )
     if not inp.allowed:
+        log.info("chat: input stopped by policy session_id=%s category=%s", session_id, inp.category)
         return ChatResponseBody(
             ok=True,
             stage="input",
@@ -343,6 +383,11 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseBody:
         final = heur
 
     if not out.ok:
+        log.info(
+            "chat: output adjusted session_id=%s flags=%s",
+            session_id,
+            out.flags,
+        )
         return ChatResponseBody(
             ok=True,
             stage="output",
@@ -372,6 +417,7 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseBody:
         await get_state().push_thought(f"Chat reply: {final[:500]}")
     except Exception:  # noqa: BLE001
         pass
+    log.info("chat: completed session_id=%s", session_id)
     return ChatResponseBody(
         ok=True,
         stage="output",

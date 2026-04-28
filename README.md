@@ -63,6 +63,7 @@ The UI is a **static-export Next.js** app; production hosting is **S3 website ho
 
 All variables are documented in [`.env.example`](.env.example). Notable ones:
 
+- **Logging:** `LOG_LEVEL` (e.g. `INFO`, `DEBUG`) — configures stderr logging, HTTP access lines (path and status, not body), chat/MCP events, and quiets `httpx` / boto at `INFO`  
 - **LLM:** `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, optional `GUARDRAIL_MODEL`  
 - **Chain:** `SOLANA_RPC_URL` (default devnet)  
 - **Memory:** `PERSIST_CONVERSATIONS`, and for S3: `USE_S3`, `S3_BUCKET`, `AWS_REGION`  
